@@ -3,6 +3,7 @@ import numpy as np
 import requests
 import lxml.etree as etree
 import keyboard
+import datetime
 
 def get_seqs():
     # Get starting sequence and first sequence
@@ -13,13 +14,15 @@ def get_seqs():
         print("Error: could not connect to MTConnect stream")
         return
     
+    log_time = pd.to_datetime(datetime.datetime.utcnow()).round('ms').tz_localize('UTC')
+    
     root = etree.fromstring(resp.content)
     start = int(root[0].attrib['nextSequence'])
     first = int(root[0].attrib['firstSequence'])
     
     # Wait for key press
     
-    print("Started logging, press any key to end logging")
+    print(f"Started logging {log_time}\nPress any key to end logging")
     keyboard.read_event(suppress=True)
     
     # After keypress, 
@@ -36,10 +39,11 @@ def get_seqs():
     root = etree.fromstring(resp.content)
     end = int(root[0].attrib['lastSequence'])
     
-    return first, start, end
+    return first, start, end, log_time
 
-def load_data(first, start, end):
-    df = pd.DataFrame(index = range(first, end + 1), columns=['timestamp'])
+def load_data(first, end, start_time, start=False):
+    # df = pd.DataFrame(index = range(first, end + 1), columns=['timestamp'])
+    df = pd.DataFrame(columns=['timestamp'])
     
     # Get data from MTConnect stream
     
@@ -59,30 +63,38 @@ def load_data(first, start, end):
         for k in j:
             for l in k:
                 for m in l:
-                    idx = int(m.attrib['sequence'])
-                    df.at[idx, 'timestamp'] = pd.to_datetime(m.attrib['timestamp'])
-                    df.at[idx, m.tag] = m.text
+                    # rounding timestamps to millisecond precision
+                    
+                    timestamp = pd.to_datetime(m.attrib['timestamp']).round('ms')
+                    df.at[timestamp, m.tag] = m.text
+                    
+    df.sort_index(inplace=True)
     
-    df = accumulate(df, first, end)
-       
-    return df.loc[start : ]
+    df.drop(columns=['timestamp'], inplace=True)
+    df.reset_index(inplace=True, names='timestamp')
+    
+    return accumulate(df, start_time, start)
 
-def accumulate(df, first, end):
-    for i in range(first + 1, end + 1):
-        for j in df.columns:
-            if pd.isna(df.at[i, j]):
-                df.at[i, j] = df.at[i - 1, j]   
+def accumulate(df, start_time, start=False):
+    start_index = 1 if df.loc[0, 'timestamp'] < start_time else 0
     
-    return df
+    for i in range(1, len(df)):
+        if df.loc[i, 'timestamp'] < start_time:
+            start_index += 1
+        for j in df.columns:
+            if pd.isna(df.loc[i, j]):
+                df.loc[i, j] = df.loc[i - 1, j]
+    
+    return df[start_index: ] if not start else df
 
 def main():
     # Get start and end sequences
     
-    first, start, end = get_seqs()
+    first, start, end, start_time = get_seqs()
     
     # Load data between start and end sequences
     
-    df = load_data(first, start, end)
+    df = load_data(first, end, start_time, False)
     
     # Export df to a CSV file
     
