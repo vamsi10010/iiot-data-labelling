@@ -6,7 +6,6 @@ import keyboard
 import lxml.etree as etree
 # from multiprocessing import Process, Queue
 from threading import Thread, Lock
-import time
 import re
 import os
 
@@ -105,7 +104,7 @@ def main():
     devices = {device.attrib['uuid'] : [] for device in sound_root.xpath("//x:DeviceStream", namespaces={'x': NAMESPACE})}   
     
     # Create lock to prevent race conditions
-    lock1 = Lock()
+    lock = Lock()
 
     print("Logging, press space to stop", start_time)
     while running:
@@ -122,7 +121,7 @@ def main():
         
         procs = []
         for device in devices.keys():
-            proc = Thread(target=record, args=(resp.content, devices, device, lock1))
+            proc = Thread(target=record, args=(resp.content, devices, device, lock))
             procs.append(proc)
             proc.start()
         
@@ -155,7 +154,7 @@ def main():
         # collect devices and data
         procs = []
         for device in devices.keys():
-            proc = Thread(target=record, args=(resp.content, devices, device, lock1))
+            proc = Thread(target=record, args=(resp.content, devices, device, lock))
             procs.append(proc)
             proc.start()
         
