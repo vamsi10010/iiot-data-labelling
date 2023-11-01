@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-import scipy.io.wavfile
 import requests
 import keyboard
 import lxml.etree as etree

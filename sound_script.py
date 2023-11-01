@@ -33,7 +33,7 @@ def write_wav(devices: dict, sensor: str, filename: str) -> None:
     scipy.io.wavfile.write('./audio/' + filename, SAMP_RATE, np.array(devices[sensor], dtype=np.int16))
     print("Wrote WAV file", filename)
 
-def record(content: str, devices: dict, sensor: str, lock: Lock) -> None:
+def record(content: str, devices: dict, sensor: str, lock: Lock, namespace: str) -> None:
     '''Record sound data from XML string for given sensor.
     
     This function converts the XML string into an ElementTree object and then
@@ -43,7 +43,7 @@ def record(content: str, devices: dict, sensor: str, lock: Lock) -> None:
     
     # info('function record')
     root = etree.fromstring(content)
-    device_root = root.xpath("//x:DisplacementTimeSeries[@dataItemId='" + sensor.split('-')[-1] + "']", namespaces={'x': 'urn:mtconnect.org:MTConnectStreams:1.5'})
+    device_root = root.xpath("//x:DisplacementTimeSeries[@dataItemId='" + sensor.split('-')[-1] + "']", namespaces={'x': namespace})
     output = []
     [output.extend([0 if x == 'UNAVAILABLE' else np.int16(x) for x in data.text.split(' ')]) for data in device_root]
     
@@ -121,7 +121,7 @@ def main():
         
         procs = []
         for device in devices.keys():
-            proc = Thread(target=record, args=(resp.content, devices, device, lock))
+            proc = Thread(target=record, args=(resp.content, devices, device, lock, NAMESPACE))
             procs.append(proc)
             proc.start()
         
@@ -153,7 +153,7 @@ def main():
         # collect devices and data
         procs = []
         for device in devices.keys():
-            proc = Thread(target=record, args=(resp.content, devices, device, lock))
+            proc = Thread(target=record, args=(resp.content, devices, device, lock, NAMESPACE))
             procs.append(proc)
             proc.start()
         
