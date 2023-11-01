@@ -139,7 +139,6 @@ def main():
         f_seq = int(header['nextSequence'])
         l_seq = int(header['lastSequence'])
         
-        # time.sleep(1)
         print('Value of running: ', running)
     else:
         print("Logging stopped, generating wav files...")
