@@ -17,6 +17,14 @@ SAMP_RATE = 48000
 
 running = True
 
+def filename2time(filename: str) -> pd.Timestamp:
+    '''Convert filename to timestamp.
+    
+    This function takes a filename and returns the timestamp encoded in the filename.
+    '''
+    
+    return pd.to_datetime(filename.split('.')[1].replace('_', ':'))
+
 def info(title):
     print(title)
     print('module name:', __name__)
@@ -43,7 +51,7 @@ def record(content: str, devices: dict, sensor: str, lock: Lock, namespace: str)
     
     # info('function record')
     root = etree.fromstring(content)
-    device_root = root.xpath("//x:DisplacementTimeSeries[@dataItemId='" + sensor.split('-')[-1] + "']", namespaces={'x': namespace})
+    device_root = root.xpath("//x:DisplacementTimeSeries[@dataItemId='" + sensor + "']", namespaces={'x': namespace})
     output = []
     [output.extend([0 if x == 'UNAVAILABLE' else np.int16(x) for x in data.text.split(' ')]) for data in device_root]
     
@@ -92,16 +100,22 @@ def main():
 
     header = sound_root.xpath("//x:Header", namespaces={'x': NAMESPACE})[0].attrib
     start_time = pd.to_datetime(header['creationTime'])
+    start_times = {}
     
     # uncomment this to get sound from the start
     # f_seq = int(header['firstSequence'])
     # l_seq = int(header['lastSequence'])
     
-    f_seq = int(header['lastSequence'])
-    l_seq = int(header['nextSequence'])
+    f_seq = int(header['nextSequence'])
+    l_seq = f_seq + 1
     
-    # Get device names
-    devices = {device.attrib['uuid'] : [] for device in sound_root.xpath("//x:DeviceStream", namespaces={'x': NAMESPACE})}   
+    # Get device names, starting timestamps, and first data sequences
+    devices = {}   
+    
+    for device in sound_root.xpath("//x:DisplacementTimeSeries", namespaces={'x': NAMESPACE}):
+        devices[device.attrib['dataItemId']] = [0 if x == 'UNAVAILABLE' else np.int16(x) for x in device.text.split(' ')]
+        start_times[device.attrib['dataItemId']] = pd.to_datetime(device.attrib['timestamp'])
+        
     
     # Create lock to prevent race conditions
     lock = Lock()
@@ -166,7 +180,7 @@ def main():
     # Write wav files
     procs = []
     for device in devices.keys():
-        proc = Thread(target=write_wav, args=(devices, device, device + '.' + str(start_time).replace(':','_') + '.wav'))
+        proc = Thread(target=write_wav, args=(devices, device, device + '.' + str(start_times[device]).replace(':','_') + '.wav'))
         procs.append(proc)
         proc.start()
         
