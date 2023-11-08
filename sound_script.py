@@ -4,7 +4,6 @@ import scipy.io.wavfile
 import requests
 import keyboard
 import lxml.etree as etree
-# from multiprocessing import Process, Queue
 from threading import Thread, Lock
 import re
 import os
@@ -50,13 +49,17 @@ def record(content: str, devices: dict, sensor: str, lock: Lock, namespace: str)
     '''
     
     # info('function record')
+    pattern = re.compile('-?[0-9][0-9]*')           # regex to match integers
+    
     root = etree.fromstring(content)
     device_root = root.xpath("//x:DisplacementTimeSeries[@dataItemId='" + sensor + "']", namespaces={'x': namespace})
     output = []
-    [output.extend([0 if x == 'UNAVAILABLE' else np.int16(x) for x in data.text.split(' ')]) for data in device_root]
+    try:
+        [output.extend([np.int16(x) if bool(pattern.fullmatch(x)) else 0 for x in data.text.split(' ')]) for data in device_root]
+    except:
+        return
     
     # Place output in devices dictionary
-    
     lock.acquire()
     devices[sensor].extend(output)
     lock.release()
@@ -119,6 +122,8 @@ def main():
     
     # Create lock to prevent race conditions
     lock = Lock()
+    
+    run_final = True
 
     print("Logging, press space to stop", start_time)
     while running:
@@ -148,8 +153,10 @@ def main():
         try:
             header = sound_root.xpath("//x:Header", namespaces={'x': NAMESPACE})[0].attrib
         except:
-            print(f_seq, l_seq, SAMPLE)
-            exit(1)
+            run_final = False
+            running = False
+            print("Could not get header, exiting...")
+            
         f_seq = int(header['nextSequence'])
         l_seq = int(header['lastSequence'])
         
@@ -157,22 +164,23 @@ def main():
     else:
         print("Logging stopped, generating wav files...")
         
-        # collect the final sample
-        SAMPLE = 'sample?from={}&to={}'.format(f_seq, l_seq)
-        
-        # request sample
-        resp = session.get(AGENT + SAMPLE)
-        sound_root = etree.fromstring(resp.content)
-        
-        # collect devices and data
-        procs = []
-        for device in devices.keys():
-            proc = Thread(target=record, args=(resp.content, devices, device, lock, NAMESPACE))
-            procs.append(proc)
-            proc.start()
-        
-        for proc in procs:
-            proc.join()
+        if run_final:
+            # collect the final sample
+            SAMPLE = 'sample?from={}&to={}'.format(f_seq, l_seq)
+            
+            # request sample
+            resp = session.get(AGENT + SAMPLE)
+            sound_root = etree.fromstring(resp.content)
+            
+            # collect devices and data
+            procs = []
+            for device in devices.keys():
+                proc = Thread(target=record, args=(resp.content, devices, device, lock, NAMESPACE))
+                procs.append(proc)
+                proc.start()
+            
+            for proc in procs:
+                proc.join()
             
     # Unregister the key event listener when the loop exits
     keyboard.unhook_all()
