@@ -107,6 +107,8 @@ def main():
     
     f_seq = l_seq
     l_seq += 1
+    
+    run_final = True
         
     # Log real time data    
     print("Logging, press space to stop", start_time)
@@ -136,23 +138,18 @@ def main():
         # update first and last sequence
         tries = 100
         for i in range(tries):
+            run_final = True
             try:
                 header = root.xpath("//x:Header", namespaces={'x': NAMESPACE})[0].attrib
             except:
-                if i < tries - 1:
+                run_final = False       # do not request another sample
+                if running and i < tries - 1:
                     print("Could not get header, trying again...")
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
                 else:
-                    print(f_seq, l_seq, SAMPLE)
-                    exit(1)
+                    print("Could not get header, exiting...")
             break
-            
-        # try:
-        #     header = root.xpath("//x:Header", namespaces={'x': NAMESPACE})[0].attrib
-        # except:
-        #     print(f_seq, l_seq, SAMPLE)
-        #     exit(1)
             
         f_seq = int(header['nextSequence'])
         l_seq = int(header['lastSequence'])
@@ -160,23 +157,23 @@ def main():
         print('Value of running: ', running)
     else:
         print("Logging stopped, generating csv files...")
-        
-        # collect the final sample
-        SAMPLE = 'sample?from={}&to={}'.format(f_seq, l_seq)
-        
-        # request sample
-        resp = session.get(AGENT + SAMPLE)
-        root = etree.fromstring(resp.content)
-        
-        # collect devices and data
-        procs = []
-        for device in devices:
-            proc = Thread(target=record, args=(resp.content, device.attrib['uuid'], lock, NAMESPACE))
-            procs.append(proc)
-            proc.start()
-        
-        for proc in procs:
-            proc.join()
+        if run_final:
+            # collect the final sample
+            SAMPLE = 'sample?from={}&to={}'.format(f_seq, l_seq)
+            
+            # request sample
+            resp = session.get(AGENT + SAMPLE)
+            root = etree.fromstring(resp.content)
+            
+            # collect devices and data
+            procs = []
+            for device in devices:
+                proc = Thread(target=record, args=(resp.content, device.attrib['uuid'], lock, NAMESPACE))
+                procs.append(proc)
+                proc.start()
+            
+            for proc in procs:
+                proc.join()
             
     # Unregister the key event listener when the loop exits
     keyboard.unhook_all()
